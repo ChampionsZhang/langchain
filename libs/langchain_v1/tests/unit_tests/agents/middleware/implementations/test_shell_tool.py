@@ -298,6 +298,30 @@ def test_explicit_env_replaces_parent_environment(
         middleware.after_agent(state, runtime)
 
 
+def test_empty_env_does_not_inherit_parent_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Keep an explicit empty environment distinct from omitted `env`."""
+    marker_name = "LANGCHAIN_SHELL_PARENT_ENV_TEST"
+    monkeypatch.setenv(marker_name, "parent-secret")
+    middleware = ShellToolMiddleware(
+        workspace_root=tmp_path / "workspace",
+        env={},
+    )
+    runtime = Runtime()
+    state = _empty_state()
+    try:
+        resources = middleware._get_or_create_resources(state)
+        result = middleware._run_shell_tool(
+            resources,
+            {"command": f'printf "%s\\n" "${{{marker_name}:-missing}}"'},
+            tool_call_id=None,
+        )
+        assert result.strip() == "missing"
+    finally:
+        middleware.after_agent(state, runtime)
+
+
 def test_shell_tool_missing_command_string(tmp_path: Path) -> None:
     """Test that shell tool raises an error when command is not a string."""
     middleware = ShellToolMiddleware(workspace_root=tmp_path / "workspace")

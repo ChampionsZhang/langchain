@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import abc
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -96,6 +97,9 @@ class HostExecutionPolicy(BaseExecutionPolicy):
     host filesystem and tooling without additional isolation. Enforces optional CPU and
     memory limits to prevent runaway commands but offers **no** filesystem or network
     sandboxing; commands can modify anything the process user can reach.
+
+    When `env` is `None`, commands inherit the parent process environment. An explicit
+    mapping, including an empty mapping, replaces the inherited environment.
 
     On Linux platforms resource limits are applied with `resource.prlimit` after the
     shell starts. On macOS, where `prlimit` is unavailable, limits are set in a
@@ -322,9 +326,10 @@ class DockerExecutionPolicy(BaseExecutionPolicy):
         command: Sequence[str],
     ) -> subprocess.Popen[str]:
         full_command = self._build_command(workspace, env, command)
+        host_env = os.environ.copy()
         return _launch_subprocess(
             full_command,
-            env=None,
+            env=host_env,
             cwd=workspace,
             preexec_fn=None,
             start_new_session=True,

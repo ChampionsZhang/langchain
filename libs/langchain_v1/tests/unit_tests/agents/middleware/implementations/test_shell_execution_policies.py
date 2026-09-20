@@ -318,7 +318,8 @@ def test_docker_policy_spawns_docker_run(monkeypatch: pytest.MonkeyPatch, tmp_pa
     ) -> subprocess.Popen[str]:
         recorded["command"] = list(command)
         assert cwd == tmp_path
-        assert env is None  # Docker CLI inherits the host environment via Popen.
+        assert env is not None
+        assert env["PATH"] == os.environ["PATH"]
         assert start_new_session is True
         return Mock()
 
@@ -363,7 +364,27 @@ def test_docker_policy_does_not_forward_parent_env_when_env_is_none(
     DockerExecutionPolicy().spawn(workspace=tmp_path, env=None, command=("/bin/sh",))
 
     command = fake_launch.call_args.args[0]
-    assert fake_launch.call_args.kwargs["env"] is None
+    host_env = fake_launch.call_args.kwargs["env"]
+    assert host_env[marker_name] == "parent-secret"
+    assert "-e" not in command
+    assert not any(marker_name in argument for argument in command)
+
+
+def test_docker_policy_does_not_add_env_flags_for_empty_mapping(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Treat an explicit empty environment as zero container `-e` flags."""
+    marker_name = "LANGCHAIN_DOCKER_PARENT_SECRET_TEST"
+    monkeypatch.setenv(marker_name, "parent-secret")
+    monkeypatch.setattr(shutil, "which", lambda _: "/usr/bin/docker")
+    fake_launch = Mock(return_value=Mock())
+    monkeypatch.setattr(_execution, "_launch_subprocess", fake_launch)
+
+    DockerExecutionPolicy().spawn(workspace=tmp_path, env={}, command=("/bin/sh",))
+
+    command = fake_launch.call_args.args[0]
+    host_env = fake_launch.call_args.kwargs["env"]
+    assert host_env[marker_name] == "parent-secret"
     assert "-e" not in command
     assert not any(marker_name in argument for argument in command)
 
@@ -385,7 +406,8 @@ def test_docker_policy_forwards_explicit_env(
     )
 
     command = fake_launch.call_args.args[0]
-    assert fake_launch.call_args.kwargs["env"] is None
+    host_env = fake_launch.call_args.kwargs["env"]
+    assert host_env[marker_name] == "parent-secret"
     assert "EXPLICIT_DOCKER_ENV_TEST=visible" in command
     assert not any(marker_name in argument for argument in command)
 
